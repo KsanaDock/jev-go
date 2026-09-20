@@ -6,9 +6,10 @@
   <header><a class="brand" href="/" aria-label="与 AI 手谈首页"><span class="brand-mark">弈</span><span>与 AI 手谈<small>一方棋盘，两种判断。</small></span></a><button id="connection" class="connection"><span class="dot"></span><span id="connection-label">连接 OpenRouter</span><span aria-hidden="true">↗</span></button></header>
   <main>
     <section class="play-area" aria-label="九路围棋对局">
-      <div class="board-heading"><div><span class="eyebrow">THE NINE-LINE EXPERIMENT</span><h1>落一子，看看它怎么想。</h1></div><span class="board-tag">九路 · 9 × 9</span></div>
+      <div class="board-heading"><div><span class="eyebrow">THE BOARD EXPERIMENT</span><h1>落一子，看看它怎么想。</h1></div><span class="board-tag">九路 · 9 × 9</span></div>
+      <div class="model-picker"><label for="game-kind">棋种</label><select id="game-kind"><option value="go">九路围棋 · 9 × 9</option><option value="gomoku">五子棋 · 15 × 15</option></select></div>
       <div class="model-picker"><label for="opponent-model">白方对手</label><select id="opponent-model"><option value="deepseek/deepseek-v4.1-flash">DeepSeek V4.1 Flash</option><option value="typesafe/jev-1.13">Jev 1.13</option></select></div><p id="model-note" class="model-note"></p>
-      <div class="players"><div><span class="stone-icon black"></span><span>你<small>执黑 · 先行</small></span></div><div class="versus">对弈</div><div><span><span id="opponent-name">DeepSeek V4.1 Flash</span><small>执白 · 贴 6.5 目</small></span><span class="stone-icon white"></span></div></div>
+      <div class="players"><div><span class="stone-icon black"></span><span>你<small>执黑 · 先行</small></span></div><div class="versus">对弈</div><div><span><span id="opponent-name">DeepSeek V4.1 Flash</span><small id="white-rule">执白 · 贴 6.5 目</small></span><span class="stone-icon white"></span></div></div>
       <div class="board-frame"><div id="board" role="group" aria-label="围棋棋盘，方向键移动，回车落子"></div></div>
       <div class="board-bottom"><p id="board-hint">点击交叉点落子 · 方向键与回车也可操作</p><span id="move-number">第 1 手</span></div>
       <div class="controls"><button id="pass">停一手</button><button id="undo">悔棋</button><button id="new-game" class="quiet">重新开局</button></div>
@@ -21,10 +22,10 @@
       <p class="experiment-note">两个模型接收相同的棋盘与合法落点。程序只检查规则，不搜索棋路。切换后，棋谱会保留每手的模型名称。</p>
     </aside>
   </main>
-  <footer><span>AI / GO</span><span>全局同形禁着 · 中国数子法 · 白贴 6.5 目</span><button id="rules" class="text-button">玩法与实验说明</button></footer>
+  <footer><span>AI / GO</span><span id="footer-rules">全局同形禁着 · 中国数子法 · 白贴 6.5 目</span><button id="rules" class="text-button">玩法与实验说明</button></footer>
 </div>
 <dialog id="connect-dialog"><form id="connect-form"><button type="button" class="close-dialog" aria-label="关闭">×</button><span class="eyebrow">OPENROUTER</span><h2>请对手入座。</h2><p>输入你的 OpenRouter API 密钥，即可开始对弈。每次轮到 AI 时，会向你的账户发起一次模型请求。</p><label for="api-key">API 密钥</label><input id="api-key" type="password" autocomplete="off" placeholder="sk-or-v1-…" required><p class="fine-print">密钥仅保留在当前页面内存中，经本机服务转发给 OpenRouter；不写入文件或浏览器存储，刷新后需重新输入。</p><p id="connect-error" role="alert"></p><button class="primary" type="submit">连接并开始</button><a href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">获取 OpenRouter 密钥 ↗</a><p class="fine-print">保存后会在模型第一次选招时验证密钥。</p></form></dialog>
-<dialog id="rules-dialog"><button class="close-dialog" aria-label="关闭">×</button><h2>九路围棋，直觉对弈。</h2><p>你执黑，所选模型执白。点击交叉点落子。棋子只与上下左右相连，一块棋没有气就会被提走；不能自杀，也不能落出此前出现过的相同棋盘。</p><p>双方连续停一手后进入数子。点击死棋整块标记，按活子与围空计算面积，白棋加 6.5 目。死活有争议时继续落子解决。</p><p>两个模型收到相同的棋盘、历史落子、合法选项和选招目标。Jev 使用决策接口；DeepSeek 使用聊天接口，请求关闭思考，只输出一个落点。没有搜索、强棋力引擎或自动代下。Jev 的概率来自模型返回，不代表胜率；DeepSeek 的这条接入路径不提供选招概率。</p><p>计时从本机发出请求到完整收到回答，包含网络、排队和模型处理，不能视为模型纯推理速度。数子是按所标死子计算的本地结果，不是模型的判断。</p><a href="https://openrouter.ai/typesafe" target="_blank" rel="noreferrer">查看 Jev 资料 ↗</a> · <a href="https://openrouter.ai/deepseek/deepseek-v4.1-flash" target="_blank" rel="noreferrer">查看 DeepSeek 资料 ↗</a></dialog>
-<dialog id="reset-dialog"><h2>重新开始这局棋？</h2><p>当前棋谱与本局费用统计将清空。你可以先关闭窗口，导出记录。</p><div class="controls"><button class="close-dialog">继续这局</button><button id="confirm-reset" class="primary">重新开局</button></div></dialog>
+<dialog id="rules-dialog"><button class="close-dialog" aria-label="关闭">×</button><h2>围棋与五子棋</h2><p>五子棋：15 × 15 棋盘，黑先白后。横、竖或斜线连续五子及以上获胜，无禁手、不提子、不能停一手，无贴目。棋盘填满且无人获胜则和棋。切换棋种会清空当前棋谱和费用统计，保留密钥与对手选择。</p><p><strong>九路围棋</strong></p><p>你执黑，所选模型执白。点击交叉点落子。棋子只与上下左右相连，一块棋没有气就会被提走；不能自杀，也不能落出此前出现过的相同棋盘。</p><p>双方连续停一手后进入数子。点击死棋整块标记，按活子与围空计算面积，白棋加 6.5 目。死活有争议时继续落子解决。</p><p>两个模型收到相同的棋盘、历史落子、合法选项和选招目标。Jev 使用决策接口；DeepSeek 使用聊天接口，请求关闭思考，只输出一个落点。没有搜索、强棋力引擎或自动代下。Jev 的概率来自模型返回，不代表胜率；DeepSeek 的这条接入路径不提供选招概率。</p><p>计时从本机发出请求到完整收到回答，包含网络、排队和模型处理，不能视为模型纯推理速度。数子是按所标死子计算的本地结果，不是模型的判断。</p><a href="https://openrouter.ai/typesafe" target="_blank" rel="noreferrer">查看 Jev 资料 ↗</a> · <a href="https://openrouter.ai/deepseek/deepseek-v4.1-flash" target="_blank" rel="noreferrer">查看 DeepSeek 资料 ↗</a></dialog>
+<dialog id="reset-dialog"><h2>重新开始这局棋？</h2><p>当前棋谱与本局费用统计将清空；正在进行的请求会取消，但上游可能已产生费用。你可以先关闭窗口，导出记录。</p><div class="controls"><button class="close-dialog">继续这局</button><button id="confirm-reset" class="primary">重新开局</button></div></dialog>
 <script type="module" src="/app.js"></script>
 </body></html>

@@ -2,14 +2,14 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
-import {replay,legalMoves} from './public/go.js';
+import {engine} from './public/games.js';
 import {buildRequest,parseDecision,MODEL,ENDPOINT} from './decisions.js';
 import {buildChatRequest,parseChatDecision,CHAT_ENDPOINT} from './chat.js';
 import {MODELS,DEEPSEEK} from './public/models.js';
 
 export function createServer({apiKey=process.env.OPENROUTER_API_KEY||'',fetchImpl=fetch}={}) {
   let busy = false;
-  const files = {'/':'index.html','/app.js':'app.js','/go.js':'go.js','/models.js':'models.js','/costs.js':'costs.js','/style.css':'style.css'};
+  const files = {'/':'index.html','/app.js':'app.js','/go.js':'go.js','/gomoku.js':'gomoku.js','/games.js':'games.js','/models.js':'models.js','/costs.js':'costs.js','/style.css':'style.css'};
   return http.createServer(async(req,res)=>{
     let chargePossible=false;
     const reply = (status,data) => {if(status>=400 && !data.billing)data={...data,billing:{cost:null,chargePossible}};res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -30,8 +30,9 @@ export function createServer({apiKey=process.env.OPENROUTER_API_KEY||'',fetchImp
         const key = typeof input.apiKey==='string' && input.apiKey.trim() ? input.apiKey.trim():apiKey;
         if(!key) return reply(401,{error:'请先连接 OpenRouter 密钥。'});
         if(key.length>512 || /[\r\n]/.test(key)) return reply(400,{error:'密钥格式不正确。'});
-        let game;
-        try {game=replay(input.moves);} catch(e) {return reply(400,{error:e.message});}
+        let game,legalMoves;
+        try {const rules=engine(input.game??'go');legalMoves=rules.legalMoves;game=rules.replay(input.moves);} catch(e) {return reply(400,{error:e.message});}
+        if(game.winner||game.draw) return reply(400,{error:'本局已结束，请重新开局。'});
         if(game.passes>=2) return reply(400,{error:'对局已进入数子，请先继续落子或重新开局。'});
         const isChat=model===DEEPSEEK;
         const request=isChat?buildChatRequest(game):buildRequest(game);

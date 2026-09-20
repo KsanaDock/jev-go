@@ -1,16 +1,18 @@
-import {coord, legalMoves} from './public/go.js';
+import {engine} from './public/games.js';
 export const MODEL = 'typesafe/jev-1.13';
 export const ENDPOINT = 'https://openrouter.ai/api/alpha/decisions';
 export function buildRequest(game) {
+  const {coord,legalMoves,SIZE,LETTERS}=engine(game.kind??'go');
+  const gomoku=game.kind==='gomoku';
   const legal = legalMoves(game);
   if(!legal.length) throw new Error('对局已经结束。');
   return {
     model:MODEL,
     state:{
-      game:'Go (Weiqi), 9x9',
-      rules:'Chinese area scoring: live stones + surrounded empty intersections. White komi 6.5 points. No suicide. Positional superko. Two consecutive passes end play. Captured stones do not add separate points.',
-      coordinates:'Columns A B C D E F G H J, left to right (skip I). Rows 9 to 1, top to bottom. Orthogonal neighbors only. X=black, O=white, .=empty.',
-      board_rows:Array.from({length:9},(_,r)=>`${9-r} ${game.board.slice(r*9,r*9+9).map(s=>'.XO'[s]).join(' ')}`),
+      game:gomoku?'Gomoku (freestyle), 15x15':'Go (Weiqi), 9x9',
+      rules:gomoku?'Black plays first. Alternate placing one stone on an empty intersection. First to connect five or more stones horizontally, vertically, or diagonally wins. No forbidden moves, captures, passes, or komi. Full board without a winner is a draw.':'Chinese area scoring: live stones + surrounded empty intersections. White komi 6.5 points. No suicide. Positional superko. Two consecutive passes end play. Captured stones do not add separate points.',
+      coordinates:`Columns ${LETTERS.split('').join(' ')}, left to right (skip I). Rows ${SIZE} to 1, top to bottom. ${gomoku?'Winning lines may be horizontal, vertical, or diagonal.':'Groups and liberties use orthogonal neighbors only.'} X=black, O=white, .=empty.`,
+      board_rows:Array.from({length:SIZE},(_,r)=>`${SIZE-r} ${game.board.slice(r*SIZE,r*SIZE+SIZE).map(s=>'.XO'[s]).join(' ')}`),
       stones:{black:game.board.flatMap((s,i)=>s===1?[coord(i)]:[]),white:game.board.flatMap((s,i)=>s===2?[coord(i)]:[])},
       to_play:game.turn===1?'black':'white',
       move_number:game.moves.length+1,
@@ -19,7 +21,7 @@ export function buildRequest(game) {
     },
     questions:{move:{
       type:'choice',
-      instructions:'You are playing Go as the to_play color. Choose the legal move that best improves your chance of winning the entire game against a strong opponent. Consider liberties, captures, saving endangered groups, connections, eyes, territory, and the opponent response. All supplied moves are legal. Pass only if no useful moves remain. Select exactly one candidate.',
+      instructions:gomoku?'You are playing Gomoku as the to_play color. Choose the legal move that best improves your chance of winning. Complete five in a row when possible; block immediate opponent wins and consider threats in all four line directions. All supplied moves are legal. Select exactly one candidate.':'You are playing Go as the to_play color. Choose the legal move that best improves your chance of winning the entire game against a strong opponent. Consider liberties, captures, saving endangered groups, connections, eyes, territory, and the opponent response. All supplied moves are legal. Pass only if no useful moves remain. Select exactly one candidate.',
       criteria:Object.fromEntries(legal.map(m=>[m,m==='pass'?'Pass this turn without placing a stone.':`Place a ${game.turn===1?'black':'white'} stone at ${m}.`]))
     }}
   };
