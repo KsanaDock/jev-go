@@ -1,8 +1,8 @@
 import {buildRequest} from './decisions.js';
 import {DEEPSEEK} from './public/models.js';
 export const CHAT_ENDPOINT='https://openrouter.ai/api/v1/chat/completions';
-export function buildChatRequest(game) {
-  const decision=buildRequest(game), question=decision.questions.move;
+export function buildChatRequest(game,analysis=null) {
+  const decision=buildRequest(game,analysis), question=decision.questions.move;
   return {
     model:DEEPSEEK,
     messages:[

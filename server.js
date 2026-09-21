@@ -1,3 +1,4 @@
+import {analyzeTactics} from './tactics.js';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -34,8 +35,12 @@ export function createServer({apiKey=process.env.OPENROUTER_API_KEY||'',fetchImp
         try {const rules=engine(input.game??'go');legalMoves=rules.legalMoves;game=rules.replay(input.moves);} catch(e) {return reply(400,{error:e.message});}
         if(game.winner||game.draw) return reply(400,{error:'本局已结束，请重新开局。'});
         if(game.passes>=2) return reply(400,{error:'对局已进入数子，请先继续落子或重新开局。'});
+        const mode=input.strategy??'direct';
+        if(!['direct','tactical'].includes(mode)) return reply(400,{error:'请选择直接选招或战术辅助。'});
+        const analysis=game.kind==='gomoku'&&mode==='tactical'?analyzeTactics(game):null;
+        const candidates=analysis?analysis.candidates:legalMoves(game);
         const isChat=model===DEEPSEEK;
-        const request=isChat?buildChatRequest(game):buildRequest(game);
+        const request=isChat?buildChatRequest(game,analysis):buildRequest(game,analysis);
         if(busy) return reply(429,{error:'已有一手棋正在请求，请稍后再试。'});
         busy=true;
         const controller = new AbortController(), timeout=setTimeout(()=>controller.abort(),45000);
@@ -50,8 +55,8 @@ export function createServer({apiKey=process.env.OPENROUTER_API_KEY||'',fetchImp
           }
           const data=await upstream.json();
           let result;
-          try {result=isChat?parseChatDecision(data,legalMoves(game)):parseDecision(data,legalMoves(game));} catch(e) {const cost=data?.usage?.cost;return reply(502,{error:e.message,billing:{cost:typeof cost==='number'&&Number.isFinite(cost)&&cost>=0?cost:null,chargePossible:true}});}
-          reply(200,{...result,requestedModel:model,source:isChat?'chat':'decisions',elapsedMs:Math.round(performance.now()-start)});
+          try {result=isChat?parseChatDecision(data,candidates):parseDecision(data,candidates);} catch(e) {const cost=data?.usage?.cost;return reply(502,{error:e.message,billing:{cost:typeof cost==='number'&&Number.isFinite(cost)&&cost>=0?cost:null,chargePossible:true}});}
+          reply(200,{...result,strategy:analysis?'tactical':'direct',...(analysis?{tactics:analysis}:{}),requestedModel:model,source:isChat?'chat':'decisions',elapsedMs:Math.round(performance.now()-start)});
         } catch(e) {reply(502,{error:controller.signal.aborted?'本次请求超时或已取消，没有自动代下。可以重试。':'无法连接 OpenRouter，请检查网络后重试。'});}
         finally {clearTimeout(timeout);res.off('close',onClose);busy=false;}
       } catch {reply(400,{error:'请求内容无法读取。'});}

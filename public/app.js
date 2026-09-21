@@ -6,7 +6,7 @@ import {MODELS,JEV,DEEPSEEK,modelName} from './models.js';
 import {costEntry,summarizeCosts} from './costs.js';
 const $=id=>document.getElementById(id);
 let game=newGame(), apiKey='', hasServerKey=false, busy=false, failure='', latest=null, decisions=[], dead=new Set(), finished=false, version=0, controller=null, focusIndex=40;
-let selectedModel=DEEPSEEK;
+let selectedModel=DEEPSEEK,selectedStrategy='tactical';
 let charges=[];
 const connected=()=>Boolean(apiKey||hasServerKey);
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -26,6 +26,9 @@ function render(){
   const gomoku=gameKind==='gomoku';
   finished=finished||Boolean(game.winner||game.draw);
   $('game-kind').value=gameKind;
+  $('strategy-picker').hidden=!gomoku;$('strategy-note').hidden=!gomoku;
+  $('strategy').value=selectedStrategy;$('strategy').disabled=busy;
+  $('strategy-note').textContent=selectedStrategy==='tactical'?'程序先检查立即获胜、必须防守和双重威胁，再由模型选招；每手一次请求。':'模型直接从全部合法落点选招，便于比较辅助效果。';
   document.title=`与 AI 手谈 · ${engine(gameKind).name}`;
   document.querySelector('.play-area').setAttribute('aria-label',engine(gameKind).name+'对局');
   document.querySelector('.board-tag').textContent=gomoku?'五子棋 · 15 × 15':'九路 · 9 × 9';
@@ -52,19 +55,23 @@ function render(){
   $('connection-label').textContent=connected()?'已配置密钥':'连接 OpenRouter';
   $('black-captures').textContent=game.captures[1];$('white-captures').textContent=game.captures[2];$('move-number').textContent=finished?`共 ${game.moves.length} 手`:`第 ${game.moves.length+1} 手`;
   $('turn-title').textContent=finished?'本局结束':scoring?'一起数数子':busy?`${opponent} 正在选招`:game.turn===1?'轮到你落子':`轮到 ${opponent} 落子`;
-  $('turn-description').textContent=finished?(gomoku?(game.draw?'棋盘已满，本局和棋。':game.winner===1?'黑方连成五子，你赢了。':'白方连成五子，模型获胜。'):resultText(score)):scoring?'双方已停一手。请标记死子，或继续下完争议局部。':busy?(selectedModel===DEEPSEEK?'DeepSeek 正在直接选招，已请求关闭思考。':'它正在所有合法落点中做选择。'):game.turn===1?(game.moves.at(-1)?.move==='pass'?`${modelName(latest?.requestedModel||latest?.model)} 停了一手。你可以继续落子，或停一手进入数子。`:connected()?'你执黑，点击交叉点落子。':`你执黑先行。连接 OpenRouter 后，落下第一颗棋子。`):`等待 ${opponent} 的下一手。`;
+  $('turn-description').textContent=finished?(gomoku?(game.draw?'棋盘已满，本局和棋。':game.winner===1?'黑方连成五子，你赢了。':'白方连成五子，模型获胜。'):resultText(score)):scoring?'双方已停一手。请标记死子，或继续下完争议局部。':busy?(selectedModel===DEEPSEEK?'DeepSeek 正在直接选招，已请求关闭思考。':'它正在候选落点中做选择。'):game.turn===1?(game.moves.at(-1)?.move==='pass'?`${modelName(latest?.requestedModel||latest?.model)} 停了一手。你可以继续落子，或停一手进入数子。`:connected()?'你执黑，点击交叉点落子。':`你执黑先行。连接 OpenRouter 后，落下第一颗棋子。`):`等待 ${opponent} 的下一手。`;
   $('error').hidden=!failure;$('error').textContent=failure;$('retry').hidden=busy||scoring||finished||game.turn!==2;
   $('pass').disabled=busy||scoring||finished||game.turn!==1;$('undo').disabled=busy||!game.moves.length;
   $('score-panel').hidden=!scoring;$('finish').hidden=finished;$('resume').hidden=finished;
   if(score)$('score-preview').textContent=`黑 ${score.black} · 白 ${score.white}（含贴目）`;
   $('board-hint').textContent=scoring?'点击整块棋，切换死子标记':busy?`${opponent} 正在选择下一手…`:(gomoku?'可横向滚动棋盘 · 方向键与回车也可落子':'点击交叉点落子 · 方向键与回车也可操作');
   $('export').disabled=!game.moves.length;
-  let rows='';for(let i=0;i<game.moves.length;i+=2){const record=decisions.find(d=>d.ply===i+2);const who=record?(MODELS[record.requestedModel]?.shortName||modelName(record.model)):'';rows+=`<div class="history-row"><span>${Math.floor(i/2)+1}</span><span><i class="stone-icon black"></i>${moveLabel(game.moves[i].move)}</span><span>${game.moves[i+1]?`<i class="stone-icon white"></i>${moveLabel(game.moves[i+1].move)} <small>${escape(who)}</small>`:'—'}</span></div>`;}
+  let rows='';for(let i=0;i<game.moves.length;i+=2){const record=decisions.find(d=>d.ply===i+2);const who=record?(MODELS[record.requestedModel]?.shortName||modelName(record.model)):'';rows+=`<div class="history-row"><span>${Math.floor(i/2)+1}</span><span><i class="stone-icon black"></i>${moveLabel(game.moves[i].move)}</span><span>${game.moves[i+1]?`<i class="stone-icon white"></i>${moveLabel(game.moves[i+1].move)} <small>${escape(who)}${record?.strategy==='tactical'?' · 辅助':''}</small>`:'—'}</span></div>`;}
   $('history').innerHTML=rows||'<p class="empty-history">棋局尚未开始。</p>';$('history').scrollTop=$('history').scrollHeight;
   $('decision-coordinate').textContent=latest?moveLabel(latest.choice):'—';
   $('decision-title').textContent=latest?`${modelName(latest.requestedModel||latest.model)} 的这一手`:'模型的这一手';
+  const tactics=latest?.tactics;
+  $('tactics-note').hidden=!tactics;
+  if(tactics){const reasons={win_now:'发现立即获胜落点',force_win_next:'发现无法同时封堵的双重获胜点',avoid_immediate_loss:tactics.candidateCount===tactics.legalCount?'未发现会让对手下一手直接获胜的落点':'已排除让对手下一手获胜的落点',unavoidable_immediate_loss:'对手已有无法全部封堵的获胜点'};$('tactics-note').textContent=`战术辅助：${reasons[tactics.reason]} · ${tactics.legalCount} 个合法落点 → ${tactics.candidateCount} 个候选。短期检查不代表整体胜率。`;}
   $('probability-note').textContent=latest?.source==='chat'?'本次只返回落点，未提供选招概率。已请求关闭思考；耗时包含网络与服务排队。':'选招概率不是胜率。耗时包含网络与服务排队。';
   if(latest?.source==='chat' && latest.usage.reasoning_tokens>0) $('probability-note').textContent='已请求关闭思考，但服务仍报告了思考 Token。请以本手实际用量与耗时为准。';
+  if(tactics&&latest.source!=='chat')$('probability-note').textContent+=' 概率仅针对筛选后的候选。';
   $('latency').innerHTML=`${latest?latest.elapsedMs.toLocaleString():'—'}<small> ms</small>`;
   $('cost').textContent=latest?.usage.cost!=null?`$${latest.usage.cost.toFixed(6)}`:'—';
   const spending=summarizeCosts(charges);
@@ -83,7 +90,7 @@ async function askJev(){
   busy=true;failure='';render();const current=version;controller=new AbortController();
   const requestedModel=selectedModel;let recorded=false;
   try{
-    const res=await fetch('/api/decide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:gameKind,moves:game.moves.map(m=>m.move),apiKey,model:selectedModel}),signal:controller.signal});
+    const res=await fetch('/api/decide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:gameKind,moves:game.moves.map(m=>m.move),apiKey,model:selectedModel,strategy:gameKind==='gomoku'?selectedStrategy:'direct'}),signal:controller.signal});
     const data=await res.json();if(current!==version)return;
     charges.push(costEntry(data,requestedModel,res.ok));recorded=true;
     if(!res.ok)throw new Error(data.error||'本次选招没有完成，请重试。');
@@ -102,6 +109,7 @@ $('board').addEventListener('click',e=>{const el=e.target.closest('button');if(!
 });
 $('board').addEventListener('keydown',e=>{const el=e.target.closest('button');if(!el)return;const size=engine(gameKind).SIZE;let i=Number(el.dataset.index), x=i%size,y=Math.floor(i/size);if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();if(e.key==='ArrowLeft')x=Math.max(0,x-1);if(e.key==='ArrowRight')x=Math.min(size-1,x+1);if(e.key==='ArrowUp')y=Math.max(0,y-1);if(e.key==='ArrowDown')y=Math.min(size-1,y+1);focusIndex=y*size+x;for(const b of $('board').querySelectorAll('button'))b.tabIndex=Number(b.dataset.index)===focusIndex?0:-1;$('board').querySelector(`[data-index="${focusIndex}"]`).focus();});
 $('pass').onclick=()=>humanMove('pass');$('retry').onclick=askJev;
+$('strategy').onchange=e=>{if(busy)return;selectedStrategy=e.target.value;failure='';render();};
 $('opponent-model').onchange=e=>{if(busy)return;selectedModel=e.target.value;failure='';render();};
 $('connection').onclick=()=>{$('connect-dialog').showModal();$('api-key').focus();};
 $('connect-form').onsubmit=e=>{e.preventDefault();const value=$('api-key').value.trim();if(!value.startsWith('sk-or-')||value.length<20){$('connect-error').textContent='请输入完整的 OpenRouter API 密钥。';return;}apiKey=value;$('api-key').value='';$('connect-error').textContent='';$('connect-dialog').close();render();askJev();};
@@ -114,5 +122,5 @@ $('confirm-reset').onclick=()=>{$('reset-dialog').close();reset();};
 $('undo').onclick=()=>{if(busy||!game.moves.length)return;let moves=game.moves.map(m=>m.move);moves.pop();if(moves.length%2===1)moves.pop();game=replay(moves);decisions=decisions.filter(d=>d.ply<=moves.length);latest=decisions.at(-1)||null;finished=false;dead.clear();failure='';render();};
 $('resume').onclick=()=>{game=replay(game.moves.slice(0,-2).map(m=>m.move));decisions=decisions.filter(d=>d.ply<=game.moves.length);latest=decisions.at(-1)||null;dead.clear();render();askJev();};
 $('finish').onclick=()=>{finished=true;render();};
-$('export').onclick=()=>{const blob=new Blob([JSON.stringify({format:'jev-go-v3',game:gameKind,size:engine(gameKind).SIZE,komi:gameKind==='go'?6.5:0,rules:gameKind==='go'?'Chinese area; positional superko; no suicide':'Freestyle Gomoku; five or more wins; no forbidden moves',selectedModel,moves:game.moves,decisions,spending:summarizeCosts(charges),charges,markedDead:[...dead].map(coord),result:finished?(gameKind==='go'?areaScore(game,[...dead]):{winner:game.winner,draw:game.draw}):null},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ai-${gameKind}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('export').onclick=()=>{const blob=new Blob([JSON.stringify({format:'jev-go-v3',game:gameKind,size:engine(gameKind).SIZE,komi:gameKind==='go'?6.5:0,rules:gameKind==='go'?'Chinese area; positional superko; no suicide':'Freestyle Gomoku; five or more wins; no forbidden moves',selectedModel,selectedStrategy,moves:game.moves,decisions,spending:summarizeCosts(charges),charges,markedDead:[...dead].map(coord),result:finished?(gameKind==='go'?areaScore(game,[...dead]):{winner:game.winner,draw:game.draw}):null},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ai-${gameKind}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 makeBoard();render();fetch('/api/config').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(c=>{hasServerKey=c.hasKey;render();}).catch(()=>{failure='本机服务没有响应，请重新打开页面。';render();});
